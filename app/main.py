@@ -4,6 +4,9 @@ from app.agent import marketing_graph
 
 
 app = FastAPI(title="Marketing Agent API")
+@app.get("/")
+def home():
+    return {"message": "Marketing AI Agent is running!"}
 
 class Query(BaseModel):
     question: str
