@@ -7,53 +7,79 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-model = ChatGroq( model="llama-3.1-8b-instant",
-                  temperature=0,
-                  api_key=GROQ_API_KEY)
+# model = ChatGroq( model="llama-3.1-8b-instant",
+#                   temperature=0,
+#                   api_key=GROQ_API_KEY)
 
 
 
 
 
 
-from langchain_community.document_loaders import TextLoader
+def get_vector_retriever():
+    """
+    Loads or rebuilds the vectorstore lazily (only when needed).
+    Safe for Render free tier.
+    """
+    import os
+    from langchain_community.document_loaders import TextLoader
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+    from langchain_huggingface import HuggingFaceEmbeddings
+    from langchain_community.vectorstores import Chroma
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DOC_PATH = os.path.join(BASE_DIR, "rag_docs", "marketing_blogs.txt")
+    PERSIST_DIR = "vectorstore"
 
-loader = TextLoader(DOC_PATH, encoding="utf-8")
+    # If vectorstore exists → load it
+    if os.path.exists(PERSIST_DIR) and len(os.listdir(PERSIST_DIR)) > 0:
+        emb = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        vectorstore = Chroma(
+            persist_directory=PERSIST_DIR,
+            embedding_function=emb
+        )
+        return vectorstore.as_retriever()
 
-docs = loader.load()
+    # Otherwise → rebuild it
+    print("Vectorstore missing → rebuilding...")
 
+    DOC_PATH = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "rag_docs",
+        "marketing_blogs.txt"
+    )
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+    loader = TextLoader(DOC_PATH, encoding="utf-8")
+    docs = loader.load()
 
-splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=100)
-chunks = splitter.split_documents(docs)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    chunks = splitter.split_documents(docs)
 
-from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
+    emb = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-emb = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
-
-PERSIST_DIR = "vectorstore"
-
-# This Automatically rebuild vectorstore if missing (Render)
-if not os.path.exists(PERSIST_DIR) or len(os.listdir(PERSIST_DIR)) == 0:
-    print("Vectorstore missing. Rebuilding...")
     vectorstore = Chroma.from_documents(
         documents=chunks,
         embedding=emb,
         persist_directory=PERSIST_DIR
     )
+
     print("Vectorstore rebuilt successfully.")
-else:
-    vectorstore = Chroma(
-        embedding_function=emb,
-        persist_directory=PERSIST_DIR
+    return vectorstore.as_retriever()
+
+#vector_retriever = get_vector_retriever()
+def get_chunks():
+    from langchain_community.document_loaders import TextLoader
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+    DOC_PATH = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "rag_docs",
+        "marketing_blogs.txt"
     )
 
-vector_retriever = vectorstore.as_retriever()
+    loader = TextLoader(DOC_PATH, encoding="utf-8")
+    docs = loader.load()
+
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    return splitter.split_documents(docs)
 
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnableParallel
@@ -98,16 +124,21 @@ from langchain_core.tools import tool
 @tool
 def summary_tool(query: str) -> str:
     """Summarization tool for summarizing the State of AI report."""
+    chunks = get_chunks()
     result = summary_chain.run(chunks)
     return result
 
 @tool
 def vector_tool(query: str) -> str:
-    """Vector search tool for retrieving specific context from the State of AI report."""
-    docs = vector_retriever.invoke(query)
+    """Vector search tool for retrieving specific context from the marketing blogs."""
+    retriever = get_vector_retriever()
+    docs = retriever.invoke(query)
     context = "\n\n".join([d.page_content for d in docs])
-    response = llm.invoke(f"Use the context below to answer:\n\n{context}\n\nQuestion: {query}")
+    response = llm.invoke(
+        f"Use the context below to answer:\n\n{context}\n\nQuestion: {query}"
+    )
     return response.content
+
 
 def pick_tool(name: str):
     name = name.strip().lower()
@@ -310,9 +341,9 @@ graph.add_edge("answer", END)
 # 6. Compile
 marketing_graph = graph.compile()
 
-result = marketing_graph.invoke({
-    "question": "Give me the best ad copy ideas for a summer sale"
-}
-    )
+# result = marketing_graph.invoke({
+#     "question": "Give me the best ad copy ideas for a summer sale"
+# }
+#     )
 
-print(result["final_answer"])
+# print(result["final_answer"])
