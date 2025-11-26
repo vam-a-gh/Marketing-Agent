@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from app.agent import marketing_graph
 
-
+print(" USING THIS VERSION OF main.py")
 app = FastAPI(title="Marketing Agent API")
 @app.get("/")
 def home():
