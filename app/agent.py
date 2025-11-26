@@ -7,7 +7,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-model = ChatGroq( model="llama-3.1-8b-instant", temperature=0)
+model = ChatGroq( model="llama-3.1-8b-instant",
+                  temperature=0,
+                  api_key=GROQ_API_KEY)
 
 
 
@@ -34,12 +36,22 @@ from langchain_huggingface import HuggingFaceEmbeddings
 
 emb = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
 
-vectorstore = Chroma.from_documents(
-    documents=chunks,
-    embedding=emb,
-    persist_directory="vectorstore"
+PERSIST_DIR = "vectorstore"
 
-)
+# This Automatically rebuild vectorstore if missing (Render)
+if not os.path.exists(PERSIST_DIR) or len(os.listdir(PERSIST_DIR)) == 0:
+    print("Vectorstore missing. Rebuilding...")
+    vectorstore = Chroma.from_documents(
+        documents=chunks,
+        embedding=emb,
+        persist_directory=PERSIST_DIR
+    )
+    print("Vectorstore rebuilt successfully.")
+else:
+    vectorstore = Chroma(
+        embedding_function=emb,
+        persist_directory=PERSIST_DIR
+    )
 
 vector_retriever = vectorstore.as_retriever()
 
@@ -73,7 +85,11 @@ def load_summarize_chain(llm, chain_type="map_reduce"):
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_groq import ChatGroq
 
-llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
+llm = ChatGroq(
+    model="llama-3.1-8b-instant",
+    temperature=0,
+    api_key=GROQ_API_KEY
+)
 
 summary_chain = load_summarize_chain(llm, chain_type="map_reduce")
 
