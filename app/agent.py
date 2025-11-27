@@ -22,32 +22,46 @@ def get_vector_retriever():
     Loads or rebuilds the vectorstore lazily (only when needed).
     Safe for Render free tier.
     """
-    import os
     from langchain_community.document_loaders import TextLoader
     from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_huggingface import HuggingFaceEmbeddings
     from langchain_community.vectorstores import Chroma
 
     
+    DOC_PATH = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "rag_docs",
+        "marketing_blogs.txt"
+    )
 
+    loader = TextLoader(DOC_PATH, encoding="utf-8")
+    docs = loader.load()
+
+    
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    chunks = splitter.split_documents(docs)
+
+    
     emb = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
+    
     if IS_RENDER:
-    print("⚠ Running on Render → using IN-MEMORY Chroma (no persistence)")
-    vectorstore = Chroma.from_documents(
-        documents=chunks,
-        embedding=emb,
-        persist_directory=None   
-    )
-else:
-    print("Local → persistent Chroma")
-    vectorstore = Chroma.from_documents(
-        documents=chunks,
-        embedding=emb,
-        persist_directory="vectorstore"
-    )
+        
+        vectorstore = Chroma.from_documents(
+            documents=chunks,
+            embedding=emb,
+            persist_directory=None
+        )
+    else:
+        
+        vectorstore = Chroma.from_documents(
+            documents=chunks,
+            embedding=emb,
+            persist_directory="vectorstore"
+        )
 
-return vectorstore.as_retriever()
+    return vectorstore.as_retriever()
+
 
 #vector_retriever = get_vector_retriever()
 def get_chunks():
