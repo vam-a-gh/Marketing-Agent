@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+IS_RENDER = os.getenv("RENDER", "0") == "1"
 # model = ChatGroq( model="llama-3.1-8b-instant",
 #                   temperature=0,
 #                   api_key=GROQ_API_KEY)
@@ -27,42 +28,26 @@ def get_vector_retriever():
     from langchain_huggingface import HuggingFaceEmbeddings
     from langchain_community.vectorstores import Chroma
 
-    PERSIST_DIR = "vectorstore"
-
-    # If vectorstore exists → load it
-    if os.path.exists(PERSIST_DIR) and len(os.listdir(PERSIST_DIR)) > 0:
-        emb = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-        vectorstore = Chroma(
-            persist_directory=PERSIST_DIR,
-            embedding_function=emb
-        )
-        return vectorstore.as_retriever()
-
-    # Otherwise → rebuild it
-    print("Vectorstore missing → rebuilding...")
-
-    DOC_PATH = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "rag_docs",
-        "marketing_blogs.txt"
-    )
-
-    loader = TextLoader(DOC_PATH, encoding="utf-8")
-    docs = loader.load()
-
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-    chunks = splitter.split_documents(docs)
+    
 
     emb = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
+    if IS_RENDER:
+    print("⚠ Running on Render → using IN-MEMORY Chroma (no persistence)")
     vectorstore = Chroma.from_documents(
         documents=chunks,
         embedding=emb,
-        persist_directory=PERSIST_DIR
+        persist_directory=None   
+    )
+else:
+    print("Local → persistent Chroma")
+    vectorstore = Chroma.from_documents(
+        documents=chunks,
+        embedding=emb,
+        persist_directory="vectorstore"
     )
 
-    print("Vectorstore rebuilt successfully.")
-    return vectorstore.as_retriever()
+return vectorstore.as_retriever()
 
 #vector_retriever = get_vector_retriever()
 def get_chunks():
